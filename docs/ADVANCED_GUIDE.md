@@ -160,10 +160,12 @@ Back up the whole archive directory if you want a complete Shot Tracker backup.
 ### Media storage cleanup
 
 For new copied shots, Shot Tracker registers the database row immediately, then
-converts each available BMP frame sequence to H.264 MP4 on a background worker.
-The worker removes a sequence only after the replacement video exists, is
-non-empty, and its path has been saved. Database records, strike data, and
-generated videos are preserved. Frames are also preserved when video conversion
+converts every available BMP frame sequence to H.264 MP4 on a background worker:
+the processed impact replay, raw swing camera 1, and raw swing camera 2. Replay
+windows show an encoding spinner and refresh automatically when the worker
+finishes. The worker removes each sequence only after that sequence's replacement
+video exists, is non-empty, and its path has been saved. Database records, strike
+data, and generated videos are preserved. Frames are also preserved when video conversion
 fails or when `--no-copy` is used. FFmpeg runs without opening a console window
 on Windows.
 
