@@ -21,7 +21,7 @@ class ShotReviewTests(unittest.TestCase):
         cx = sqlite3.connect(self.db)
         try:
             cx.execute(
-                "CREATE TABLE shots(id INTEGER PRIMARY KEY, shot_time TEXT, club TEXT)"
+                "CREATE TABLE shots(id INTEGER PRIMARY KEY, shot_time TEXT, club TEXT, archive_path TEXT)"
             )
             cx.commit()
         finally:
@@ -54,6 +54,111 @@ class ShotReviewTests(unittest.TestCase):
         sessions = self.store.sessions()
         renamed = next(item for item in sessions if item["id"] == session_id)
         self.assertEqual(renamed["name"], "Driver fitting")
+
+    def test_session_archive_restore_and_shot_type_counts(self):
+        session_id = self.store.create_session("Practice")
+        with self.store.connect() as connection:
+            connection.executemany(
+                "INSERT INTO shots(shot_time,club,session_id) VALUES(?,?,?)",
+                (
+                    ("2026-09-04T10:00:00", "D", session_id),
+                    ("2026-09-04T10:01:00", "D", session_id),
+                    ("2026-09-04T10:02:00", "I7", session_id),
+                ),
+            )
+            connection.commit()
+
+        ok, error = self.store.archive_session(session_id)
+        self.assertTrue(ok)
+        self.assertIsNone(error)
+        self.assertNotIn(session_id, {item["id"] for item in self.store.sessions()})
+        self.assertEqual(self.store.list_shots(), [])
+
+        archived = self.store.archived_sessions()
+        self.assertEqual(len(archived), 1)
+        self.assertEqual(archived[0]["name"], "Practice")
+        self.assertEqual(archived[0]["shot_count"], 3)
+        self.assertTrue(archived[0]["created_at"])
+        self.assertTrue(archived[0]["archived_at"])
+        self.assertEqual(
+            {item["type"]: item["count"] for item in archived[0]["shot_types"]},
+            {"D": 2, "I7": 1},
+        )
+
+        ok, error = self.store.restore_session(session_id)
+        self.assertTrue(ok)
+        self.assertIsNone(error)
+        self.assertIn(session_id, {item["id"] for item in self.store.sessions()})
+        self.assertEqual(len(self.store.list_shots()), 3)
+
+    def test_delete_archived_session_removes_owned_media_only(self):
+        session_id = self.store.create_session("Delete me")
+        owned = self.db.parent / "shots" / "2026-09-04" / "owned-shot"
+        owned.mkdir(parents=True)
+        (owned / "impact_replay.mp4").write_bytes(b"video")
+        external = self.db.parent / "original-vtrack-shot"
+        external.mkdir()
+        (external / "Cam1_01.bmp").write_bytes(b"source")
+        with self.store.connect() as connection:
+            connection.executemany(
+                "INSERT INTO shots(shot_time,club,session_id,archive_path) VALUES(?,?,?,?)",
+                (
+                    ("2026-09-04T11:00:00", "D", session_id, str(owned)),
+                    ("2026-09-04T11:01:00", "I7", session_id, str(external)),
+                ),
+            )
+            connection.commit()
+
+        active_delete = self.store.delete_archived_session(session_id)
+        self.assertFalse(active_delete[0])
+        self.assertIn("archive", active_delete[1])
+
+        self.assertTrue(self.store.archive_session(session_id)[0])
+        ok, error, deleted = self.store.delete_archived_session(session_id)
+        self.assertTrue(ok)
+        self.assertIsNone(error)
+        self.assertEqual(deleted["shot_count"], 2)
+        self.assertEqual(deleted["folder_count"], 1)
+        self.assertFalse(owned.exists())
+        self.assertTrue(external.exists())
+        with self.store.connect() as connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT COUNT(*) FROM sessions WHERE id=?", (session_id,)
+                ).fetchone()[0],
+                0,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT COUNT(*) FROM shots WHERE session_id=?", (session_id,)
+                ).fetchone()[0],
+                0,
+            )
+
+    def test_delete_session_api_requires_irreversible_confirmation(self):
+        session_id = self.store.create_session("Delete through API")
+        self.assertTrue(self.store.archive_session(session_id)[0])
+        server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(self.store))
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            url = f"http://127.0.0.1:{server.server_port}/api/sessions/{session_id}"
+            request = urllib.request.Request(url, method="DELETE")
+            with self.assertRaises(urllib.error.HTTPError) as denied:
+                urllib.request.urlopen(request, timeout=2)
+            self.assertEqual(denied.exception.code, 403)
+
+            request = urllib.request.Request(
+                url, headers={"X-VTrack-Delete": "DELETE"}, method="DELETE"
+            )
+            with urllib.request.urlopen(request, timeout=2) as response:
+                payload = json.loads(response.read())
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["deleted"]["name"], "Delete through API")
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=2)
 
     def test_bag_mapping_and_preferences_persist_in_archive(self):
         self.assertEqual(self.store.save_bag_mapping({"3 Wood": "5 Wood"}), {"W3": "W5"})
@@ -242,6 +347,14 @@ class ShotReviewTests(unittest.TestCase):
         self.assertIn("mediaSpin", HTML)
         self.assertIn("ENCODING", HTML)
         self.assertIn("Video encoding is running in the background", HTML)
+        self.assertIn('id="archiveViewer"', HTML)
+        self.assertIn('id="archiveModal"', HTML)
+        self.assertIn('id="deleteSessionModal"', HTML)
+        self.assertIn("Archived sessions", HTML)
+        self.assertIn("This action is irreversible.", HTML)
+        self.assertIn("Type DELETE to confirm", HTML)
+        self.assertIn("X-VTrack-Delete", HTML)
+        self.assertIn("function restoreArchivedSession", HTML)
 
     def test_latest_navigation_and_export_contract(self):
         self.assertIn('class="body sessionListBody"', HTML)

@@ -189,6 +189,20 @@ frames. To retain source BMPs for future shots, set the
 `VTRACK_KEEP_SOURCE_FRAMES=1` environment variable before starting Shot
 Tracker, or pass `--keep-source-frames` when running the collector directly.
 
+### Archive, restore, or delete sessions
+
+Use the archive button on an active session to remove it from the normal session
+and shot views without deleting anything. Open **Archived** at the bottom of the
+Sessions panel to see each archived session's name, creation date, archive date,
+total shot count, and counts by club type. Select **Restore** to return the
+session and all of its shots to the normal views.
+
+Permanent deletion is available only from the Archived sessions viewer. The
+confirmation dialog identifies the session, warns that deletion is irreversible,
+and requires typing `DELETE`. Deletion removes the session's database records
+and media directories stored under the archive's `shots` directory. Paths to
+original VTrack folders outside the Shot Tracker archive are never deleted.
+
 ### Logs
 
 Logs are normally under:
