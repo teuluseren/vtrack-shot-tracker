@@ -64,7 +64,7 @@ jobs:
             ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
             Set-Content "dist\VTrackShotTracker-$env:APP_VERSION-SHA256SUMS.txt"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: VTrackShotTracker-${{ env.APP_VERSION }}-windows
           path: |
