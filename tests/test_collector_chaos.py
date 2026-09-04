@@ -4,6 +4,7 @@ import sqlite3
 import tempfile
 import time
 import unittest
+from unittest import mock
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from collector.vtrack_shot_collector import (
     TrajectoryParser,
     cleanup_converted_frames,
     discover_numbered_folders,
+    process_shot_media,
 )
 
 
@@ -50,6 +52,49 @@ class CollectorChaosTests(unittest.TestCase):
             self.assertTrue(all(not frame.exists() for frame in replay_frames))
             self.assertTrue(cam1_frame.exists())
             self.assertTrue(cam2_frame.exists())
+
+    def test_background_media_processing_persists_paths_before_cleanup(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            db_path = root / "shots.sqlite3"
+            db = Database(db_path)
+            cur = db.cx.execute(
+                "INSERT INTO shots(shot_time,created_at) VALUES(?,?)",
+                ("2026-09-04T12:00:00", "2026-09-04T12:00:00"),
+            )
+            shot_id = int(cur.lastrowid)
+            db.cx.commit()
+            db.close()
+
+            videos = {}
+            for kind, name in (
+                ("replay", "impact_replay.mp4"),
+                ("cam1", "cam1_raw.mp4"),
+                ("cam2", "cam2_raw.mp4"),
+            ):
+                path = root / name
+                path.write_bytes(b"video")
+                videos[kind] = path
+
+            with mock.patch(
+                "collector.vtrack_shot_collector.make_shot_videos",
+                return_value=videos,
+            ), mock.patch(
+                "collector.vtrack_shot_collector.cleanup_converted_frames",
+                return_value=(3, 300),
+            ) as cleanup:
+                process_shot_media(db_path, shot_id, "ffmpeg", root, 10.0, True)
+
+            with sqlite3.connect(db_path) as cx:
+                row = cx.execute(
+                    """
+                    SELECT replay_video_path,cam1_video_path,cam2_video_path
+                    FROM shots WHERE id=?
+                    """,
+                    (shot_id,),
+                ).fetchone()
+            self.assertEqual(row, tuple(str(videos[k]) for k in ("replay", "cam1", "cam2")))
+            cleanup.assert_called_once_with(videos)
 
     def test_tail_starts_at_eof_and_handles_partial_lines(self):
         with tempfile.TemporaryDirectory() as tempdir:
