@@ -376,6 +376,47 @@ def make_shot_videos(
     return result
 
 
+FRAME_VIDEO_PAIRS = {
+    "replay": "+SHO_LIB_Cam1_*.bmp",
+    "cam1": "Cam1_*.bmp",
+    "cam2": "Cam2_*.bmp",
+}
+
+
+def cleanup_converted_frames(
+    videos: dict[str, Optional[Path]], *, dry_run: bool = False
+) -> tuple[int, int]:
+    """Remove BMP sources only for video outputs that exist and are non-empty."""
+    candidates: dict[Path, int] = {}
+    for kind, pattern in FRAME_VIDEO_PAIRS.items():
+        video = videos.get(kind)
+        if not video:
+            continue
+        try:
+            if not video.is_file() or video.stat().st_size <= 0:
+                continue
+        except OSError:
+            continue
+        for frame in video.parent.glob(pattern):
+            try:
+                if frame.is_file():
+                    candidates[frame] = frame.stat().st_size
+            except OSError:
+                continue
+
+    removed = 0
+    reclaimed = 0
+    for frame, size in candidates.items():
+        if not dry_run:
+            try:
+                frame.unlink()
+            except OSError:
+                continue
+        removed += 1
+        reclaimed += size
+    return removed, reclaimed
+
+
 class Database:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -675,6 +716,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         default=10.0,
         help="Playback frame rate for camera videos (default: 10 fps).",
     )
+    parser.add_argument(
+        "--keep-source-frames",
+        action="store_true",
+        default=os.environ.get("VTRACK_KEEP_SOURCE_FRAMES", "").strip().lower()
+        in {"1", "true", "yes", "on"},
+        help=(
+            "Keep archived BMP frame sequences after MP4 conversion. "
+            "Defaults to removing frames whose video was created successfully."
+        ),
+    )
     args = parser.parse_args(argv)
 
     local = os.environ.get("LOCALAPPDATA")
@@ -893,6 +944,14 @@ def main(argv: Optional[list[str]] = None) -> int:
                     print(f"[video] {videos['cam2'].name}")
 
                 shot_id = db.insert(pkt, tr, folder, archive_path, videos)
+
+                if not args.no_copy and not args.keep_source_frames:
+                    removed, reclaimed = cleanup_converted_frames(videos)
+                    if removed:
+                        print(
+                            f"[storage] removed {removed} converted BMP frames "
+                            f"({reclaimed / (1024 * 1024):.1f} MiB reclaimed)"
+                        )
 
                 ball = pkt.payload.get("BallData") or {}
                 total_yd = tr.total_m * M_TO_YD if tr else None
