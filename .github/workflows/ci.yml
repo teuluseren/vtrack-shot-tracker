@@ -12,7 +12,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       - name: Compile Python
@@ -102,18 +102,29 @@ jobs:
               }
               if (-not $cdpReady) { throw 'Browser debugging endpoint did not become ready.' }
 
-              # The smoke archive has no real collector process. Refresh only its
-              # synthetic heartbeat immediately before the UI assertions so the
-              # real four-second liveness contract is exercised rather than relaxed.
-              $payload = Get-Content -LiteralPath $heartbeat -Raw | ConvertFrom-Json
-              $payload.epoch = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
-              $payload.updated_at = [DateTime]::Now.ToString('s')
-              $tmpHeartbeat = "$heartbeat.tmp"
-              $payload | ConvertTo-Json -Compress | Set-Content -LiteralPath $tmpHeartbeat -Encoding utf8
-              Move-Item -LiteralPath $tmpHeartbeat -Destination $heartbeat -Force
-
-              node tools/check_ui_smoke.mjs
-              if ($LASTEXITCODE -ne 0) { throw 'Synthetic browser workflow failed.' }
+              # The smoke archive has no real collector process, so keep its
+              # synthetic heartbeat current while the browser assertions run. This
+              # exercises the real four-second liveness contract without a timing race.
+              $heartbeatJob = Start-Job -ArgumentList $heartbeat -ScriptBlock {
+                param($path)
+                while ($true) {
+                  $payload = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+                  $payload.epoch = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
+                  $payload.updated_at = [DateTime]::Now.ToString('s')
+                  $tmpPath = "$path.tmp"
+                  $payload | ConvertTo-Json -Compress | Set-Content -LiteralPath $tmpPath -Encoding utf8
+                  Move-Item -LiteralPath $tmpPath -Destination $path -Force
+                  Start-Sleep -Milliseconds 500
+                }
+              }
+              try {
+                node tools/check_ui_smoke.mjs
+                if ($LASTEXITCODE -ne 0) { throw 'Synthetic browser workflow failed.' }
+              }
+              finally {
+                Stop-Job -Job $heartbeatJob -ErrorAction SilentlyContinue
+                Remove-Job -Job $heartbeatJob -Force -ErrorAction SilentlyContinue
+              }
             }
             finally {
               if ($browser -and -not $browser.HasExited) { Stop-Process -Id $browser.Id -Force -ErrorAction SilentlyContinue }

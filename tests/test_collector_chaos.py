@@ -43,10 +43,12 @@ class CollectorChaosTests(unittest.TestCase):
             tail = TailFile("GSProJsonClient_*.log")
             self.assertEqual(tail.poll(root), [])
 
+            # Keep the original log unambiguously older. Giving the replacement a
+            # future timestamp is unstable because appending resets its mtime to now.
+            past = time.time() - 5
+            os.utime(first, (past, past))
             second = root / "GSProJsonClient_002.log"
             second.write_text("old second\n", encoding="utf-8")
-            future = time.time() + 5
-            os.utime(second, (future, future))
             self.assertEqual(tail.poll(root), [])
 
             with second.open("a", encoding="utf-8") as handle:
