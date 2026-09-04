@@ -234,6 +234,8 @@ class ShotReviewTests(unittest.TestCase):
         self.assertIn('>ⓘ v__VTRACK_VERSION__</button>', HTML)
         self.assertIn("`ⓘ v${x.current_version}`", HTML)
         self.assertIn("X-VTrack-Update", HTML)
+        self.assertIn("function refreshSelectedMedia", HTML)
+        self.assertIn("await refreshSelectedMedia()", HTML)
 
     def test_latest_navigation_and_export_contract(self):
         self.assertIn('class="body sessionListBody"', HTML)
