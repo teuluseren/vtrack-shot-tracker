@@ -18,6 +18,7 @@ Designed for Windows and uses only the Python standard library.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import os
 import re
@@ -337,7 +338,13 @@ def make_mp4(
         str(out),
     ]
     try:
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        subprocess.run(
+            cmd,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
         if out.exists() and out.stat().st_size > 0:
             return out
     except (subprocess.CalledProcessError, OSError):
@@ -374,6 +381,103 @@ def make_shot_videos(
         ffmpeg, archive_path, "Cam2_%02d.bmp", "cam2_raw.mp4", fps
     )
     return result
+
+
+FRAME_VIDEO_PAIRS = {
+    "replay": "+SHO_LIB_Cam1_*.bmp",
+    "cam1": "Cam1_*.bmp",
+    "cam2": "Cam2_*.bmp",
+}
+
+
+def cleanup_converted_frames(
+    videos: dict[str, Optional[Path]], *, dry_run: bool = False
+) -> tuple[int, int]:
+    """Remove BMP sources only for video outputs that exist and are non-empty."""
+    candidates: dict[Path, int] = {}
+    for kind, pattern in FRAME_VIDEO_PAIRS.items():
+        video = videos.get(kind)
+        if not video:
+            continue
+        try:
+            if not video.is_file() or video.stat().st_size <= 0:
+                continue
+        except OSError:
+            continue
+        for frame in video.parent.glob(pattern):
+            try:
+                if frame.is_file():
+                    candidates[frame] = frame.stat().st_size
+            except OSError:
+                continue
+
+    removed = 0
+    reclaimed = 0
+    for frame, size in candidates.items():
+        if not dry_run:
+            try:
+                frame.unlink()
+            except OSError:
+                continue
+        removed += 1
+        reclaimed += size
+    return removed, reclaimed
+
+
+def process_shot_media(
+    db_path: Path,
+    shot_id: int,
+    ffmpeg: Optional[str],
+    archive_path: Optional[Path],
+    fps: float,
+    remove_source_frames: bool,
+) -> None:
+    """Generate shot videos after registration, then persist paths and clean sources."""
+    videos: dict[str, Optional[Path]] = {
+        "replay": None,
+        "cam1": None,
+        "cam2": None,
+    }
+    try:
+        videos = make_shot_videos(ffmpeg, archive_path, fps)
+    except Exception as exc:
+        print(f"[warning] video generation for shot #{shot_id} failed: {exc}")
+
+    try:
+        cx = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            cx.execute(
+                """
+                UPDATE shots
+                SET replay_video_path=?, cam1_video_path=?, cam2_video_path=?,
+                    media_processing=0
+                WHERE id=?
+                """,
+                (
+                    str(videos["replay"]) if videos["replay"] else None,
+                    str(videos["cam1"]) if videos["cam1"] else None,
+                    str(videos["cam2"]) if videos["cam2"] else None,
+                    shot_id,
+                ),
+            )
+            cx.commit()
+        finally:
+            cx.close()
+    except sqlite3.Error as exc:
+        print(f"[warning] video paths for shot #{shot_id} were not saved: {exc}")
+        return
+
+    for kind in ("replay", "cam1", "cam2"):
+        if videos.get(kind):
+            print(f"[video] shot #{shot_id} {videos[kind].name}")
+
+    if remove_source_frames:
+        removed, reclaimed = cleanup_converted_frames(videos)
+        if removed:
+            print(
+                f"[storage] shot #{shot_id} removed {removed} converted BMP frames "
+                f"({reclaimed / (1024 * 1024):.1f} MiB reclaimed)"
+            )
 
 
 class Database:
@@ -435,6 +539,7 @@ class Database:
                     replay_video_path TEXT,
                     cam1_video_path TEXT,
                     cam2_video_path TEXT,
+                    media_processing INTEGER NOT NULL DEFAULT 0,
 
                     gspro_json TEXT,
                     trajectory_line TEXT,
@@ -472,6 +577,7 @@ class Database:
                 "replay_video_path": "TEXT",
                 "cam1_video_path": "TEXT",
                 "cam2_video_path": "TEXT",
+                "media_processing": "INTEGER NOT NULL DEFAULT 0",
                 "club": "TEXT",
                 "gspro_club_raw": "TEXT",
                 "player_handed": "TEXT",
@@ -484,6 +590,8 @@ class Database:
                 if col not in existing_cols:
                     self.cx.execute(f"ALTER TABLE shots ADD COLUMN {col} {sql_type}")
 
+            # A collector restart means no prior in-process encoder is still active.
+            self.cx.execute("UPDATE shots SET media_processing=0 WHERE media_processing=1")
             self.cx.commit()
         except Exception:
             self.cx.close()
@@ -522,6 +630,7 @@ class Database:
         folder: Optional[FolderEvent],
         archive_path: Optional[Path],
         videos: Optional[dict[str, Optional[Path]]] = None,
+        media_processing: bool = False,
     ) -> int:
         p = packet.payload
         ball = p.get("BallData") or {}
@@ -580,6 +689,7 @@ class Database:
             "replay_video_path": str(videos.get("replay")) if videos and videos.get("replay") else None,
             "cam1_video_path": str(videos.get("cam1")) if videos and videos.get("cam1") else None,
             "cam2_video_path": str(videos.get("cam2")) if videos and videos.get("cam2") else None,
+            "media_processing": 1 if media_processing else 0,
             "gspro_json": packet.raw_json,
             "trajectory_line": traj.raw_line if traj else None,
             "created_at": datetime.now().isoformat(timespec="seconds"),
@@ -675,6 +785,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         default=10.0,
         help="Playback frame rate for camera videos (default: 10 fps).",
     )
+    parser.add_argument(
+        "--keep-source-frames",
+        action="store_true",
+        default=os.environ.get("VTRACK_KEEP_SOURCE_FRAMES", "").strip().lower()
+        in {"1", "true", "yes", "on"},
+        help=(
+            "Keep archived BMP frame sequences after MP4 conversion. "
+            "Defaults to removing frames whose video was created successfully."
+        ),
+    )
     args = parser.parse_args(argv)
 
     local = os.environ.get("LOCALAPPDATA")
@@ -705,6 +825,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     write_heartbeat()
     db = Database(archive_root / "vtrack_shots.sqlite3")
     ffmpeg = find_ffmpeg()
+    media_executor = concurrent.futures.ThreadPoolExecutor(
+        max_workers=1, thread_name_prefix="vtrack-media"
+    )
 
     gs_tail = TailFile("GSProJsonClient_*.log")
     vt_tail = TailFile("VTrackToolKit_*.log")
@@ -884,15 +1007,28 @@ def main(argv: Optional[list[str]] = None) -> int:
                         archive_path = folder.path
                     folders.remove(folder)
 
-                videos = make_shot_videos(ffmpeg, archive_path, args.video_fps)
-                if videos.get("replay"):
-                    print(f"[video] {videos['replay'].name}")
-                if videos.get("cam1"):
-                    print(f"[video] {videos['cam1'].name}")
-                if videos.get("cam2"):
-                    print(f"[video] {videos['cam2'].name}")
-
-                shot_id = db.insert(pkt, tr, folder, archive_path, videos)
+                # Register the shot before CPU-heavy video conversion. The single
+                # background worker keeps capture responsive without running several
+                # FFmpeg encodes against each other.
+                media_pending = bool(ffmpeg and archive_path)
+                shot_id = db.insert(
+                    pkt,
+                    tr,
+                    folder,
+                    archive_path,
+                    None,
+                    media_processing=media_pending,
+                )
+                if media_pending:
+                    media_executor.submit(
+                        process_shot_media,
+                        db.path,
+                        shot_id,
+                        ffmpeg,
+                        archive_path,
+                        args.video_fps,
+                        not args.no_copy and not args.keep_source_frames,
+                    )
 
                 ball = pkt.payload.get("BallData") or {}
                 total_yd = tr.total_m * M_TO_YD if tr else None
@@ -928,6 +1064,8 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     except KeyboardInterrupt:
         write_heartbeat('stopped')
+        media_executor.shutdown(wait=False, cancel_futures=True)
+        db.close()
         print("\nStopped.")
         return 0
 

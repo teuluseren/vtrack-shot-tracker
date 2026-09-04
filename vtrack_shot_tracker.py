@@ -544,6 +544,63 @@ def command_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _first_existing_file(folder: Path, names: tuple[str, ...]) -> Optional[Path]:
+    for name in names:
+        candidate = folder / name
+        try:
+            if candidate.is_file() and candidate.stat().st_size > 0:
+                return candidate
+        except OSError:
+            continue
+    return None
+
+
+def command_cleanup_storage(args: argparse.Namespace) -> int:
+    from collector.vtrack_shot_collector import cleanup_converted_frames
+
+    archive = args.archive.expanduser().resolve()
+    shots_root = archive / "shots"
+    if not shots_root.exists():
+        print(f"No archived shot folders were found under {shots_root}")
+        return 0
+
+    if args.apply:
+        command_stop(args)
+
+    try:
+        folders = sorted({frame.parent for frame in shots_root.rglob("*.bmp")})
+    except OSError as exc:
+        print(f"Could not scan archived shot folders: {exc}", file=sys.stderr)
+        return 2
+
+    total_frames = 0
+    total_bytes = 0
+    for folder in folders:
+        videos = {
+            "replay": _first_existing_file(folder, ("impact_replay.mp4",)),
+            "cam1": _first_existing_file(
+                folder, ("cam1_raw.mp4", "swing_cam1.mp4", "swing1.mp4")
+            ),
+            "cam2": _first_existing_file(
+                folder, ("cam2_raw.mp4", "swing_cam2.mp4", "swing2.mp4")
+            ),
+        }
+        removed, reclaimed = cleanup_converted_frames(
+            videos, dry_run=not args.apply
+        )
+        total_frames += removed
+        total_bytes += reclaimed
+
+    action = "Removed" if args.apply else "Would remove"
+    print(
+        f"{action} {total_frames} converted BMP frames "
+        f"({total_bytes / (1024 * 1024):.1f} MiB)."
+    )
+    if not args.apply and total_frames:
+        print("Run cleanup-storage --apply to perform this cleanup.")
+    return 0
+
+
 def command_review(args: argparse.Namespace) -> int:
     archive = args.archive.expanduser().resolve()
     try:
@@ -709,6 +766,18 @@ def create_parser() -> argparse.ArgumentParser:
     status = subs.add_parser("status", help="Show Shot Tracker process status.")
     _add_common(status, no_window=False)
     status.set_defaults(handler=command_status)
+
+    cleanup = subs.add_parser(
+        "cleanup-storage",
+        help="Remove BMP frames that already have playable MP4 replacements.",
+    )
+    cleanup.add_argument("--archive", type=Path, default=DEFAULT_ARCHIVE)
+    cleanup.add_argument(
+        "--apply",
+        action="store_true",
+        help="Perform cleanup. Without this flag, only report recoverable space.",
+    )
+    cleanup.set_defaults(handler=command_cleanup_storage)
 
     review = subs.add_parser("review", help="Open Shot Review without starting the collector.")
     _add_common(review)

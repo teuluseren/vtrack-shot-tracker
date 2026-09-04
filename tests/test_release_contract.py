@@ -22,7 +22,17 @@ class ReleaseContractTests(unittest.TestCase):
 
     def test_public_commands_are_available(self):
         parser = vtrack_shot_tracker.create_parser()
-        for command in ("start", "stop", "status", "review", "dev", "dev-stop", "check-update", "update"):
+        for command in (
+            "start",
+            "stop",
+            "status",
+            "cleanup-storage",
+            "review",
+            "dev",
+            "dev-stop",
+            "check-update",
+            "update",
+        ):
             parsed = parser.parse_args([command])
             self.assertTrue(callable(parsed.handler))
 
@@ -172,6 +182,29 @@ class ReleaseContractTests(unittest.TestCase):
                 vtrack_shot_tracker, "_spawn_role", side_effect=spawn
             ):
                 self.assertEqual(vtrack_shot_tracker.command_start(args), 0)
+
+    def test_cleanup_storage_is_dry_run_until_apply(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            archive = Path(tempdir)
+            shot = archive / "shots" / "2026-09-04" / "shot"
+            shot.mkdir(parents=True)
+            frame = shot / "Cam1_01.bmp"
+            frame.write_bytes(b"frame")
+            (shot / "cam1_raw.mp4").write_bytes(b"video")
+
+            dry = vtrack_shot_tracker.create_parser().parse_args(
+                ["cleanup-storage", "--archive", str(archive)]
+            )
+            self.assertEqual(vtrack_shot_tracker.command_cleanup_storage(dry), 0)
+            self.assertTrue(frame.exists())
+
+            apply = vtrack_shot_tracker.create_parser().parse_args(
+                ["cleanup-storage", "--archive", str(archive), "--apply"]
+            )
+            with mock.patch.object(vtrack_shot_tracker, "command_stop") as stop:
+                self.assertEqual(vtrack_shot_tracker.command_cleanup_storage(apply), 0)
+            stop.assert_called_once_with(apply)
+            self.assertFalse(frame.exists())
 
     def test_stop_only_terminates_tracker_roles(self):
         args = vtrack_shot_tracker.create_parser().parse_args(["stop"])

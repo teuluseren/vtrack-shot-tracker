@@ -31,6 +31,23 @@ class ShotReviewTests(unittest.TestCase):
     def tearDown(self):
         self.tempdir.cleanup()
 
+    def test_generated_raw_camera_video_paths_are_resolved(self):
+        self.assertIn("media_processing", self.store.columns())
+        root = Path(self.tempdir.name)
+        cam1 = root / "cam1_raw.mp4"
+        cam2 = root / "cam2_raw.mp4"
+        cam1.write_bytes(b"video-1")
+        cam2.write_bytes(b"video-2")
+
+        self.assertEqual(
+            ShotStore.resolve_media_path({"cam1_video_path": str(cam1)}, "swing1"),
+            cam1.resolve(),
+        )
+        self.assertEqual(
+            ShotStore.resolve_media_path({"archive_path": str(root)}, "swing2"),
+            cam2.resolve(),
+        )
+
     def test_session_can_be_renamed(self):
         session_id = self.store.create_session("Original")
         self.assertTrue(self.store.rename_session(session_id, "Driver fitting"))
@@ -218,6 +235,13 @@ class ShotReviewTests(unittest.TestCase):
         self.assertIn('>ⓘ v__VTRACK_VERSION__</button>', HTML)
         self.assertIn("`ⓘ v${x.current_version}`", HTML)
         self.assertIn("X-VTrack-Update", HTML)
+        self.assertIn("function refreshSelectedMedia", HTML)
+        self.assertIn("await refreshSelectedMedia()", HTML)
+        self.assertIn("media_processing", HTML)
+        self.assertIn("mediaSpinner", HTML)
+        self.assertIn("mediaSpin", HTML)
+        self.assertIn("ENCODING", HTML)
+        self.assertIn("Video encoding is running in the background", HTML)
 
     def test_latest_navigation_and_export_contract(self):
         self.assertIn('class="body sessionListBody"', HTML)
