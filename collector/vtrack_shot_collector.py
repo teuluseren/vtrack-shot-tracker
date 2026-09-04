@@ -433,9 +433,15 @@ def process_shot_media(
     remove_source_frames: bool,
 ) -> None:
     """Generate shot videos after registration, then persist paths and clean sources."""
-    videos = make_shot_videos(ffmpeg, archive_path, fps)
-    if not any(videos.values()):
-        return
+    videos: dict[str, Optional[Path]] = {
+        "replay": None,
+        "cam1": None,
+        "cam2": None,
+    }
+    try:
+        videos = make_shot_videos(ffmpeg, archive_path, fps)
+    except Exception as exc:
+        print(f"[warning] video generation for shot #{shot_id} failed: {exc}")
 
     try:
         cx = sqlite3.connect(db_path, timeout=30.0)
@@ -443,7 +449,8 @@ def process_shot_media(
             cx.execute(
                 """
                 UPDATE shots
-                SET replay_video_path=?, cam1_video_path=?, cam2_video_path=?
+                SET replay_video_path=?, cam1_video_path=?, cam2_video_path=?,
+                    media_processing=0
                 WHERE id=?
                 """,
                 (
@@ -532,6 +539,7 @@ class Database:
                     replay_video_path TEXT,
                     cam1_video_path TEXT,
                     cam2_video_path TEXT,
+                    media_processing INTEGER NOT NULL DEFAULT 0,
 
                     gspro_json TEXT,
                     trajectory_line TEXT,
@@ -569,6 +577,7 @@ class Database:
                 "replay_video_path": "TEXT",
                 "cam1_video_path": "TEXT",
                 "cam2_video_path": "TEXT",
+                "media_processing": "INTEGER NOT NULL DEFAULT 0",
                 "club": "TEXT",
                 "gspro_club_raw": "TEXT",
                 "player_handed": "TEXT",
@@ -581,6 +590,8 @@ class Database:
                 if col not in existing_cols:
                     self.cx.execute(f"ALTER TABLE shots ADD COLUMN {col} {sql_type}")
 
+            # A collector restart means no prior in-process encoder is still active.
+            self.cx.execute("UPDATE shots SET media_processing=0 WHERE media_processing=1")
             self.cx.commit()
         except Exception:
             self.cx.close()
@@ -619,6 +630,7 @@ class Database:
         folder: Optional[FolderEvent],
         archive_path: Optional[Path],
         videos: Optional[dict[str, Optional[Path]]] = None,
+        media_processing: bool = False,
     ) -> int:
         p = packet.payload
         ball = p.get("BallData") or {}
@@ -677,6 +689,7 @@ class Database:
             "replay_video_path": str(videos.get("replay")) if videos and videos.get("replay") else None,
             "cam1_video_path": str(videos.get("cam1")) if videos and videos.get("cam1") else None,
             "cam2_video_path": str(videos.get("cam2")) if videos and videos.get("cam2") else None,
+            "media_processing": 1 if media_processing else 0,
             "gspro_json": packet.raw_json,
             "trajectory_line": traj.raw_line if traj else None,
             "created_at": datetime.now().isoformat(timespec="seconds"),
@@ -997,8 +1010,16 @@ def main(argv: Optional[list[str]] = None) -> int:
                 # Register the shot before CPU-heavy video conversion. The single
                 # background worker keeps capture responsive without running several
                 # FFmpeg encodes against each other.
-                shot_id = db.insert(pkt, tr, folder, archive_path, None)
-                if ffmpeg and archive_path:
+                media_pending = bool(ffmpeg and archive_path)
+                shot_id = db.insert(
+                    pkt,
+                    tr,
+                    folder,
+                    archive_path,
+                    None,
+                    media_processing=media_pending,
+                )
+                if media_pending:
                     media_executor.submit(
                         process_shot_media,
                         db.path,
