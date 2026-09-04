@@ -32,6 +32,7 @@ class ShotReviewTests(unittest.TestCase):
         self.tempdir.cleanup()
 
     def test_generated_raw_camera_video_paths_are_resolved(self):
+        self.assertIn("media_processing", self.store.columns())
         root = Path(self.tempdir.name)
         cam1 = root / "cam1_raw.mp4"
         cam2 = root / "cam2_raw.mp4"
@@ -236,6 +237,11 @@ class ShotReviewTests(unittest.TestCase):
         self.assertIn("X-VTrack-Update", HTML)
         self.assertIn("function refreshSelectedMedia", HTML)
         self.assertIn("await refreshSelectedMedia()", HTML)
+        self.assertIn("media_processing", HTML)
+        self.assertIn("mediaSpinner", HTML)
+        self.assertIn("mediaSpin", HTML)
+        self.assertIn("ENCODING", HTML)
+        self.assertIn("Video encoding is running in the background", HTML)
 
     def test_latest_navigation_and_export_contract(self):
         self.assertIn('class="body sessionListBody"', HTML)
