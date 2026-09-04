@@ -53,14 +53,36 @@ class CollectorChaosTests(unittest.TestCase):
             self.assertTrue(cam1_frame.exists())
             self.assertTrue(cam2_frame.exists())
 
+    def test_cleanup_covers_impact_and_both_swing_sequences(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            frames = {
+                "replay": root / "+SHO_LIB_Cam1_01.bmp",
+                "cam1": root / "Cam1_01.bmp",
+                "cam2": root / "Cam2_01.bmp",
+            }
+            videos = {
+                "replay": root / "impact_replay.mp4",
+                "cam1": root / "cam1_raw.mp4",
+                "cam2": root / "cam2_raw.mp4",
+            }
+            for frame in frames.values():
+                frame.write_bytes(b"frame")
+            for video in videos.values():
+                video.write_bytes(b"video")
+
+            expected_bytes = sum(frame.stat().st_size for frame in frames.values())
+            self.assertEqual(cleanup_converted_frames(videos), (3, expected_bytes))
+            self.assertTrue(all(not frame.exists() for frame in frames.values()))
+
     def test_background_media_processing_persists_paths_before_cleanup(self):
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir)
             db_path = root / "shots.sqlite3"
             db = Database(db_path)
             cur = db.cx.execute(
-                "INSERT INTO shots(shot_time,created_at) VALUES(?,?)",
-                ("2026-09-04T12:00:00", "2026-09-04T12:00:00"),
+                "INSERT INTO shots(shot_time,created_at,media_processing) VALUES(?,?,?)",
+                ("2026-09-04T12:00:00", "2026-09-04T12:00:00", 1),
             )
             shot_id = int(cur.lastrowid)
             db.cx.commit()
@@ -89,15 +111,49 @@ class CollectorChaosTests(unittest.TestCase):
             try:
                 row = cx.execute(
                     """
-                    SELECT replay_video_path,cam1_video_path,cam2_video_path
+                    SELECT replay_video_path,cam1_video_path,cam2_video_path,
+                           media_processing
                     FROM shots WHERE id=?
                     """,
                     (shot_id,),
                 ).fetchone()
             finally:
                 cx.close()
-            self.assertEqual(row, tuple(str(videos[k]) for k in ("replay", "cam1", "cam2")))
+            self.assertEqual(
+                row,
+                tuple(str(videos[k]) for k in ("replay", "cam1", "cam2")) + (0,),
+            )
             cleanup.assert_called_once_with(videos)
+
+    def test_background_media_processing_clears_when_no_video_is_created(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            db_path = root / "shots.sqlite3"
+            db = Database(db_path)
+            shot_id = int(
+                db.cx.execute(
+                    "INSERT INTO shots(shot_time,created_at,media_processing) VALUES(?,?,?)",
+                    ("2026-09-04T12:00:01", "2026-09-04T12:00:01", 1),
+                ).lastrowid
+            )
+            db.cx.commit()
+            db.close()
+            empty = {"replay": None, "cam1": None, "cam2": None}
+
+            with mock.patch(
+                "collector.vtrack_shot_collector.make_shot_videos",
+                return_value=empty,
+            ):
+                process_shot_media(db_path, shot_id, "ffmpeg", root, 10.0, True)
+
+            cx = sqlite3.connect(db_path)
+            try:
+                state = cx.execute(
+                    "SELECT media_processing FROM shots WHERE id=?", (shot_id,)
+                ).fetchone()[0]
+            finally:
+                cx.close()
+            self.assertEqual(state, 0)
 
     def test_tail_starts_at_eof_and_handles_partial_lines(self):
         with tempfile.TemporaryDirectory() as tempdir:
