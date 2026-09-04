@@ -2,3 +2,16 @@
 
 All notable public changes follow [Keep a Changelog](https://keepachangelog.com/) and releases use [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-09-04
+
+### Added
+
+- Background H.264 conversion for impact replay and both swing-camera frame sequences.
+- Animated encoding states that refresh automatically when replay media is ready.
+- Dry-run-first `cleanup-storage` command for safely reclaiming existing archives.
+
+### Changed
+
+- New shots are registered immediately while media conversion and verified frame cleanup continue in the background.
+- FFmpeg runs without visible console windows on Windows.
+
