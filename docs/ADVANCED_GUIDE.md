@@ -26,8 +26,8 @@ The core Shot Tracker executable and VTrack are intentionally separate.
 These commands manage **Shot Tracker only**:
 
 ```powershell
-& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' start
-& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' stop
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTrackerCLI.exe' start
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTrackerCLI.exe' stop
 ```
 
 They do not start or terminate VTrackToolKit.
@@ -36,15 +36,18 @@ The optional root-level `Start-VTrack.ps1` and `Stop-VTrack.ps1` scripts are dif
 
 ## Command-line interface
 
-The installed executable supports these primary commands:
+The installed package includes a windowed `VTrackShotTracker.exe` for the
+Start menu and taskbar, plus `VTrackShotTrackerCLI.exe` for terminal commands.
+The windowed launcher starts the app when opened without arguments, so a pinned
+taskbar icon relaunches it correctly. The CLI supports these primary commands:
 
 ```powershell
-& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' start
-& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' stop
-& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' status
-& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' review
-& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' check-update
-& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' update
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTrackerCLI.exe' start
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTrackerCLI.exe' stop
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTrackerCLI.exe' status
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTrackerCLI.exe' review
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTrackerCLI.exe' check-update
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTrackerCLI.exe' update
 ```
 
 ### `start`
@@ -54,8 +57,8 @@ Starts the Shot Tracker-owned collector, local review service, and normal deskto
 Useful variants include:
 
 ```powershell
-& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' start --browser
-& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' start --no-window
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTrackerCLI.exe' start --browser
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTrackerCLI.exe' start --no-window
 ```
 
 `--browser` opens the UI in the default browser.
@@ -77,7 +80,7 @@ Starts or opens the historical review UI without requiring a live collector sess
 Browser mode:
 
 ```powershell
-& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' review --browser
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTrackerCLI.exe' review --browser
 ```
 
 ### Update commands
@@ -125,7 +128,7 @@ Extract the entire archive to a normal folder. Do not copy only the EXE out of i
 Start it with:
 
 ```powershell
-.\VTrackShotTracker.exe start
+.\VTrackShotTracker.exe
 ```
 
 The normal installer is recommended for most users because Start-menu shortcuts, update behavior, and installation paths are more predictable.
@@ -172,13 +175,13 @@ on Windows.
 Preview recoverable space in an existing archive:
 
 ```powershell
-& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' cleanup-storage
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTrackerCLI.exe' cleanup-storage
 ```
 
 Perform the cleanup:
 
 ```powershell
-& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' cleanup-storage --apply
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTrackerCLI.exe' cleanup-storage --apply
 ```
 
 The apply command stops Shot Tracker's own processes before deleting eligible
@@ -201,7 +204,7 @@ Useful files include collector, viewer, and desktop-host logs.
 Start with:
 
 ```powershell
-& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' status
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTrackerCLI.exe' status
 ```
 
 Think of the app as three pieces:
@@ -217,7 +220,7 @@ This distinction is useful because historical review can work even when the coll
 Try browser mode:
 
 ```powershell
-& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' review --browser
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTrackerCLI.exe' review --browser
 ```
 
 If browser mode works but the dedicated window does not, check Microsoft Edge WebView2 Runtime and the desktop log.

@@ -1,5 +1,6 @@
 import re
 import sqlite3
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,6 +20,14 @@ SEMVER = re.compile(
 class ReleaseContractTests(unittest.TestCase):
     def test_version_is_semver(self):
         self.assertRegex(__version__, SEMVER)
+
+    def test_no_argument_launch_defaults_to_start(self):
+        with mock.patch.object(
+            vtrack_shot_tracker, "command_start", return_value=0
+        ) as start:
+            self.assertEqual(vtrack_shot_tracker.main([]), 0)
+        start.assert_called_once()
+        self.assertEqual(start.call_args.args[0].command, "start")
 
     def test_public_commands_are_available(self):
         parser = vtrack_shot_tracker.create_parser()
@@ -98,6 +107,39 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertFalse(dev.browser)
         browser_dev = vtrack_shot_tracker.create_parser().parse_args(["dev", "--browser"])
         self.assertTrue(browser_dev.browser)
+
+    def test_packaged_app_has_windowed_launcher_and_console_cli(self):
+        root = Path(__file__).resolve().parents[1]
+        spec = (root / "packaging" / "VTrackShotTracker.spec").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('name="VTrackShotTracker"', spec)
+        self.assertIn('name="VTrackShotTrackerCLI"', spec)
+        self.assertIn("gui_exe", spec)
+        self.assertIn("cli_exe", spec)
+        self.assertIn("console=False", spec)
+        self.assertIn("console=True", spec)
+        for relative in (
+            "packaging/Start-VTrackShotTracker.ps1",
+            "packaging/Stop-VTrackShotTracker.ps1",
+            "Start-VTrack.ps1",
+            "Stop-VTrack.ps1",
+        ):
+            self.assertIn(
+                "VTrackShotTrackerCLI.exe",
+                (root / relative).read_text(encoding="utf-8"),
+            )
+
+    def test_frozen_cli_spawns_windowed_desktop_executable(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            cli = root / vtrack_shot_tracker.CLI_EXECUTABLE_NAME
+            gui = root / vtrack_shot_tracker.GUI_EXECUTABLE_NAME
+            gui.touch()
+            with mock.patch.object(sys, "frozen", True, create=True), mock.patch.object(
+                sys, "executable", str(cli)
+            ):
+                self.assertEqual(vtrack_shot_tracker._base_command(), [str(gui.resolve())])
 
     def test_windows_icon_and_uninstall_shutdown_are_packaged(self):
         root = Path(__file__).resolve().parents[1]

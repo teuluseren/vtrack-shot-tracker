@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$installed = Join-Path $env:ProgramFiles 'VTrack Shot Tracker\VTrackShotTracker.exe'
+$installed = Join-Path $env:ProgramFiles 'VTrack Shot Tracker\VTrackShotTrackerCLI.exe'
 
 # Stop the Shot Tracker cleanly first, then always close the VTrack processes
 # that the original automation script managed.

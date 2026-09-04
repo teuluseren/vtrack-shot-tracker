@@ -2,6 +2,14 @@
 
 All notable public changes follow [Keep a Changelog](https://keepachangelog.com/) and releases use [Semantic Versioning](https://semver.org/).
 
+## [0.6.1] - 2026-09-04
+
+### Fixed
+
+- Removed the console window from normal Start-menu and taskbar launches.
+- Made a taskbar-pinned app relaunch correctly when Windows omits shortcut arguments.
+- Added a dedicated console executable for status, cleanup, and other terminal commands.
+
 ## [0.6.0] - 2026-09-04
 
 ### Added

@@ -22,7 +22,7 @@ if (-not $vtrackRunning) {
     Start-Process "shell:AppsFolder\$($app.AppID)"
 }
 
-$installed = Join-Path $env:ProgramFiles 'VTrack Shot Tracker\VTrackShotTracker.exe'
+$installed = Join-Path $env:ProgramFiles 'VTrack Shot Tracker\VTrackShotTrackerCLI.exe'
 if (Test-Path -LiteralPath $installed) {
     & $installed start @args
 }

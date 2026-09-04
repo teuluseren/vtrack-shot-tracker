@@ -1,3 +1,3 @@
 $ErrorActionPreference = 'Stop'
-& (Join-Path $PSScriptRoot 'VTrackShotTracker.exe') stop @args
+& (Join-Path $PSScriptRoot 'VTrackShotTrackerCLI.exe') stop @args
 exit $LASTEXITCODE
