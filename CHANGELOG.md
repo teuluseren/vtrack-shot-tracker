@@ -2,6 +2,19 @@
 
 All notable public changes follow [Keep a Changelog](https://keepachangelog.com/) and releases use [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-09-04
+
+### Added
+
+- Reversible session archiving that hides archived sessions and their shots from normal views.
+- Archived-session viewer with names, creation/archive dates, totals, per-club shot counts, and restore actions.
+- Permanent archived-session deletion with an irreversible confirmation dialog.
+
+### Changed
+
+- Session deletion removes database records and Shot Tracker-owned media while preserving original VTrack source folders outside the archive.
+- New shots never attach to an archived session.
+
 ## [0.6.2] - 2026-09-04
 
 ### Fixed

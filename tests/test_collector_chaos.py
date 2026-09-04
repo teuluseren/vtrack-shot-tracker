@@ -155,6 +155,49 @@ class CollectorChaosTests(unittest.TestCase):
                 cx.close()
             self.assertEqual(state, 0)
 
+    def test_collector_never_adds_new_shots_to_an_archived_session(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            db = Database(Path(tempdir) / "shots.sqlite3")
+            session_columns = {
+                row[1] for row in db.cx.execute("PRAGMA table_info(sessions)")
+            }
+            self.assertIn("archived_at", session_columns)
+            archived_id = int(
+                db.cx.execute(
+                    """
+                    INSERT INTO sessions(
+                        name,session_date,start_time,is_manual,created_at,archived_at
+                    ) VALUES(?,?,?,?,?,?)
+                    """,
+                    (
+                        "Archived",
+                        "2026-09-04",
+                        "2026-09-04T09:00:00",
+                        0,
+                        "2026-09-04T09:00:00",
+                        "2026-09-04T10:00:00",
+                    ),
+                ).lastrowid
+            )
+            db.cx.execute(
+                "INSERT INTO app_settings(key,value) VALUES('active_session_id',?)",
+                (str(archived_id),),
+            )
+            db.cx.commit()
+
+            active_id = db.session_for_shot(datetime(2026, 9, 4, 12, 0, 0))
+            self.assertNotEqual(active_id, archived_id)
+            active = db.cx.execute(
+                "SELECT archived_at FROM sessions WHERE id=?", (active_id,)
+            ).fetchone()
+            self.assertIsNone(active[0])
+            self.assertIsNone(
+                db.cx.execute(
+                    "SELECT value FROM app_settings WHERE key='active_session_id'"
+                ).fetchone()
+            )
+            db.close()
+
     def test_tail_starts_at_eof_and_handles_partial_lines(self):
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir)

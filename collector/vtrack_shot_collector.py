@@ -558,7 +558,8 @@ class Database:
                     start_time TEXT NOT NULL,
                     end_time TEXT,
                     is_manual INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    archived_at TEXT
                 )
             """)
             self.cx.execute("CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(session_date)")
@@ -590,6 +591,12 @@ class Database:
                 if col not in existing_cols:
                     self.cx.execute(f"ALTER TABLE shots ADD COLUMN {col} {sql_type}")
 
+            session_cols = {
+                row[1] for row in self.cx.execute("PRAGMA table_info(sessions)").fetchall()
+            }
+            if "archived_at" not in session_cols:
+                self.cx.execute("ALTER TABLE sessions ADD COLUMN archived_at TEXT")
+
             # A collector restart means no prior in-process encoder is still active.
             self.cx.execute("UPDATE shots SET media_processing=0 WHERE media_processing=1")
             self.cx.commit()
@@ -611,11 +618,18 @@ class Database:
         day = shot_ts.strftime("%Y-%m-%d")
         active = self.cx.execute("SELECT value FROM app_settings WHERE key='active_session_id'").fetchone()
         if active and active[0]:
-            row = self.cx.execute("SELECT id, session_date FROM sessions WHERE id=?", (active[0],)).fetchone()
+            row = self.cx.execute(
+                "SELECT id, session_date FROM sessions WHERE id=? AND archived_at IS NULL",
+                (active[0],),
+            ).fetchone()
             if row and row[1] == day:
                 return int(row[0])
             self.cx.execute("DELETE FROM app_settings WHERE key='active_session_id'")
-        row = self.cx.execute("SELECT id FROM sessions WHERE session_date=? AND is_manual=0 ORDER BY id LIMIT 1", (day,)).fetchone()
+        row = self.cx.execute(
+            "SELECT id FROM sessions WHERE session_date=? AND is_manual=0 "
+            "AND archived_at IS NULL ORDER BY id LIMIT 1",
+            (day,),
+        ).fetchone()
         if row:
             return int(row[0])
         cur = self.cx.execute("INSERT INTO sessions(name,session_date,start_time,is_manual,created_at) VALUES(?,?,?,?,?)",
