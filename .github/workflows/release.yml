@@ -1,0 +1,84 @@
+name: Windows release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate version and release tag
+        shell: pwsh
+        run: |
+          $version = (python -c "from vtrack_version import __version__; print(__version__)").Trim()
+          if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$') {
+            throw "Version '$version' is not valid SemVer."
+          }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Tag '$env:GITHUB_REF_NAME' must match source version 'v$version'."
+          }
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Run checks
+        shell: pwsh
+        run: |
+          python -m py_compile vtrack_shot_tracker.py vtrack_desktop.py vtrack_version.py vtrack_updater.py collector/vtrack_shot_collector.py review/shot_review.py tools/backfill_vtrack_clubs.py tools/check_ui_js.py
+          python -m unittest discover -s tests -v
+          $js = python tools/check_ui_js.py
+          node --check $js
+          Remove-Item $js
+
+      - name: Install packaging tools
+        shell: pwsh
+        run: |
+          python -m pip install --requirement requirements-build.txt
+          choco install ffmpeg --version=8.0.1 --yes --no-progress
+          choco install innosetup --yes --no-progress
+
+      - name: Build portable package and installer
+        shell: pwsh
+        run: |
+          $ffmpeg = (Get-Command ffmpeg.exe).Source
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          .\packaging\build.ps1 -Python python -FFmpegPath $ffmpeg -IsccPath $iscc
+
+      - name: Write SHA-256 checksums
+        shell: pwsh
+        run: |
+          Get-FileHash "dist\VTrackShotTracker-$env:APP_VERSION-portable.zip", "dist\VTrackShotTracker-Setup-$env:APP_VERSION.exe" |
+            ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
+            Set-Content "dist\VTrackShotTracker-$env:APP_VERSION-SHA256SUMS.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VTrackShotTracker-${{ env.APP_VERSION }}-windows
+          path: |
+            dist/VTrackShotTracker-${{ env.APP_VERSION }}-portable.zip
+            dist/VTrackShotTracker-Setup-${{ env.APP_VERSION }}.exe
+            dist/VTrackShotTracker-${{ env.APP_VERSION }}-SHA256SUMS.txt
+
+      - name: Publish GitHub release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          prerelease: ${{ contains(env.APP_VERSION, '-') }}
+          files: |
+            dist/VTrackShotTracker-${{ env.APP_VERSION }}-portable.zip
+            dist/VTrackShotTracker-Setup-${{ env.APP_VERSION }}.exe
+            dist/VTrackShotTracker-${{ env.APP_VERSION }}-SHA256SUMS.txt

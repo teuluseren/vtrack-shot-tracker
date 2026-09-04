@@ -1,0 +1,2 @@
+"""VTrack shot collection package."""
+
