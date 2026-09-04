@@ -42,18 +42,29 @@ a.datas = [
 ]
 
 pyz = PYZ(a.pure)
-exe = EXE(
+gui_exe = EXE(
     pyz,
     a.scripts,
     [],
     exclude_binaries=True,
     name="VTrackShotTracker",
     icon=str(project_root / "assets" / "vtrack-app-icon.ico"),
+    console=False,
+    contents_directory=".",
+)
+cli_exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name="VTrackShotTrackerCLI",
+    icon=str(project_root / "assets" / "vtrack-app-icon.ico"),
     console=True,
     contents_directory=".",
 )
 coll = COLLECT(
-    exe,
+    gui_exe,
+    cli_exe,
     a.binaries,
     a.datas,
     strip=False,

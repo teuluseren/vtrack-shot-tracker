@@ -34,6 +34,8 @@ ROLE_FILES = {
     "viewer": "viewer.json",
     "desktop": "desktop.json",
 }
+GUI_EXECUTABLE_NAME = "VTrackShotTracker.exe"
+CLI_EXECUTABLE_NAME = "VTrackShotTrackerCLI.exe"
 
 class ArchiveInitializationError(RuntimeError):
     """Raised when the user's archive cannot be opened safely."""
@@ -64,6 +66,28 @@ def _role_path(role: str) -> Path:
 
 def _log_path(role: str) -> Path:
     return _runtime_root() / "logs" / f"{role}.log"
+
+
+def _configure_frozen_streams(argv: list[str]) -> None:
+    """Give the windowed build safe log streams without allocating a console."""
+    if not getattr(sys, "frozen", False):
+        return
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+
+    role = {
+        "__collector": "collector",
+        "__viewer": "viewer",
+        "__desktop": "desktop",
+    }.get(argv[0] if argv else "", "launcher")
+    try:
+        stream = _log_path(role).open("a", encoding="utf-8", buffering=1)
+    except OSError:
+        stream = open(os.devnull, "w", encoding="utf-8")
+    if sys.stdout is None:
+        sys.stdout = stream
+    if sys.stderr is None:
+        sys.stderr = stream
 
 
 def _same_executable(left: object, right: object) -> bool:
@@ -301,7 +325,12 @@ def _terminate_orphaned_tracker_processes() -> None:
 
 def _base_command() -> list[str]:
     if getattr(sys, "frozen", False):
-        return [sys.executable]
+        executable = Path(sys.executable).resolve()
+        if executable.name.casefold() == CLI_EXECUTABLE_NAME.casefold():
+            gui_executable = executable.with_name(GUI_EXECUTABLE_NAME)
+            if gui_executable.is_file():
+                executable = gui_executable
+        return [str(executable)]
     return [sys.executable, str(Path(__file__).resolve())]
 
 
@@ -820,7 +849,12 @@ def create_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    args = create_parser().parse_args(argv)
+    effective_argv = list(sys.argv[1:] if argv is None else argv)
+    if not effective_argv:
+        # Taskbar pins relaunch the executable without shortcut arguments.
+        effective_argv = ["start"]
+    _configure_frozen_streams(effective_argv)
+    args = create_parser().parse_args(effective_argv)
     return int(args.handler(args) or 0)
 
 
