@@ -438,7 +438,8 @@ def process_shot_media(
         return
 
     try:
-        with sqlite3.connect(db_path, timeout=30.0) as cx:
+        cx = sqlite3.connect(db_path, timeout=30.0)
+        try:
             cx.execute(
                 """
                 UPDATE shots
@@ -453,6 +454,8 @@ def process_shot_media(
                 ),
             )
             cx.commit()
+        finally:
+            cx.close()
     except sqlite3.Error as exc:
         print(f"[warning] video paths for shot #{shot_id} were not saved: {exc}")
         return
