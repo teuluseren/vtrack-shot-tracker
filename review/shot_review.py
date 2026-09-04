@@ -485,13 +485,13 @@ class ShotStore:
             if a:c.append(Path(a)/'impact_replay.mp4')
             if src:c.append(Path(src)/'impact_replay.mp4')
         elif kind=='swing1':
-            for k in ('swing_cam1_video_path','swing1_video_path'):
+            for k in ('cam1_video_path','swing_cam1_video_path','swing1_video_path'):
                 if row.get(k):c.append(Path(row[k]))
-            if a:c += [Path(a)/'swing_cam1.mp4',Path(a)/'swing1.mp4']
+            if a:c += [Path(a)/'cam1_raw.mp4',Path(a)/'swing_cam1.mp4',Path(a)/'swing1.mp4']
         elif kind=='swing2':
-            for k in ('swing_cam2_video_path','swing2_video_path'):
+            for k in ('cam2_video_path','swing_cam2_video_path','swing2_video_path'):
                 if row.get(k):c.append(Path(row[k]))
-            if a:c += [Path(a)/'swing_cam2.mp4',Path(a)/'swing2.mp4']
+            if a:c += [Path(a)/'cam2_raw.mp4',Path(a)/'swing_cam2.mp4',Path(a)/'swing2.mp4']
         for p in c:
             try:
                 if p.is_file():return p.resolve()
