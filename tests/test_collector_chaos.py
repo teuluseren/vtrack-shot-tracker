@@ -14,11 +14,43 @@ from collector.vtrack_shot_collector import (
     TailFile,
     Trajectory,
     TrajectoryParser,
+    cleanup_converted_frames,
     discover_numbered_folders,
 )
 
 
 class CollectorChaosTests(unittest.TestCase):
+    def test_cleanup_removes_only_frames_with_verified_video(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            replay_frames = [
+                root / "+SHO_LIB_Cam1_01.bmp",
+                root / "+SHO_LIB_Cam1_02.bmp",
+            ]
+            cam1_frame = root / "Cam1_01.bmp"
+            cam2_frame = root / "Cam2_01.bmp"
+            for frame in [*replay_frames, cam1_frame, cam2_frame]:
+                frame.write_bytes(b"frame")
+
+            replay = root / "impact_replay.mp4"
+            replay.write_bytes(b"video")
+            empty_cam1 = root / "cam1_raw.mp4"
+            empty_cam1.write_bytes(b"")
+
+            videos = {"replay": replay, "cam1": empty_cam1, "cam2": None}
+            expected_bytes = sum(frame.stat().st_size for frame in replay_frames)
+
+            self.assertEqual(
+                cleanup_converted_frames(videos, dry_run=True),
+                (2, expected_bytes),
+            )
+            self.assertTrue(all(frame.exists() for frame in replay_frames))
+
+            self.assertEqual(cleanup_converted_frames(videos), (2, expected_bytes))
+            self.assertTrue(all(not frame.exists() for frame in replay_frames))
+            self.assertTrue(cam1_frame.exists())
+            self.assertTrue(cam2_frame.exists())
+
     def test_tail_starts_at_eof_and_handles_partial_lines(self):
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir)
