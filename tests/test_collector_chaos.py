@@ -85,7 +85,8 @@ class CollectorChaosTests(unittest.TestCase):
             ) as cleanup:
                 process_shot_media(db_path, shot_id, "ffmpeg", root, 10.0, True)
 
-            with sqlite3.connect(db_path) as cx:
+            cx = sqlite3.connect(db_path)
+            try:
                 row = cx.execute(
                     """
                     SELECT replay_video_path,cam1_video_path,cam2_video_path
@@ -93,6 +94,8 @@ class CollectorChaosTests(unittest.TestCase):
                     """,
                     (shot_id,),
                 ).fetchone()
+            finally:
+                cx.close()
             self.assertEqual(row, tuple(str(videos[k]) for k in ("replay", "cam1", "cam2")))
             cleanup.assert_called_once_with(videos)
 
