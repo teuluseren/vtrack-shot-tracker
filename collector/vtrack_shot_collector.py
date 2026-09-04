@@ -18,6 +18,7 @@ Designed for Windows and uses only the Python standard library.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
 import os
 import re
@@ -337,7 +338,13 @@ def make_mp4(
         str(out),
     ]
     try:
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        subprocess.run(
+            cmd,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
         if out.exists() and out.stat().st_size > 0:
             return out
     except (subprocess.CalledProcessError, OSError):
@@ -415,6 +422,52 @@ def cleanup_converted_frames(
         removed += 1
         reclaimed += size
     return removed, reclaimed
+
+
+def process_shot_media(
+    db_path: Path,
+    shot_id: int,
+    ffmpeg: Optional[str],
+    archive_path: Optional[Path],
+    fps: float,
+    remove_source_frames: bool,
+) -> None:
+    """Generate shot videos after registration, then persist paths and clean sources."""
+    videos = make_shot_videos(ffmpeg, archive_path, fps)
+    if not any(videos.values()):
+        return
+
+    try:
+        with sqlite3.connect(db_path, timeout=30.0) as cx:
+            cx.execute(
+                """
+                UPDATE shots
+                SET replay_video_path=?, cam1_video_path=?, cam2_video_path=?
+                WHERE id=?
+                """,
+                (
+                    str(videos["replay"]) if videos["replay"] else None,
+                    str(videos["cam1"]) if videos["cam1"] else None,
+                    str(videos["cam2"]) if videos["cam2"] else None,
+                    shot_id,
+                ),
+            )
+            cx.commit()
+    except sqlite3.Error as exc:
+        print(f"[warning] video paths for shot #{shot_id} were not saved: {exc}")
+        return
+
+    for kind in ("replay", "cam1", "cam2"):
+        if videos.get(kind):
+            print(f"[video] shot #{shot_id} {videos[kind].name}")
+
+    if remove_source_frames:
+        removed, reclaimed = cleanup_converted_frames(videos)
+        if removed:
+            print(
+                f"[storage] shot #{shot_id} removed {removed} converted BMP frames "
+                f"({reclaimed / (1024 * 1024):.1f} MiB reclaimed)"
+            )
 
 
 class Database:
@@ -756,6 +809,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     write_heartbeat()
     db = Database(archive_root / "vtrack_shots.sqlite3")
     ffmpeg = find_ffmpeg()
+    media_executor = concurrent.futures.ThreadPoolExecutor(
+        max_workers=1, thread_name_prefix="vtrack-media"
+    )
 
     gs_tail = TailFile("GSProJsonClient_*.log")
     vt_tail = TailFile("VTrackToolKit_*.log")
@@ -935,23 +991,20 @@ def main(argv: Optional[list[str]] = None) -> int:
                         archive_path = folder.path
                     folders.remove(folder)
 
-                videos = make_shot_videos(ffmpeg, archive_path, args.video_fps)
-                if videos.get("replay"):
-                    print(f"[video] {videos['replay'].name}")
-                if videos.get("cam1"):
-                    print(f"[video] {videos['cam1'].name}")
-                if videos.get("cam2"):
-                    print(f"[video] {videos['cam2'].name}")
-
-                shot_id = db.insert(pkt, tr, folder, archive_path, videos)
-
-                if not args.no_copy and not args.keep_source_frames:
-                    removed, reclaimed = cleanup_converted_frames(videos)
-                    if removed:
-                        print(
-                            f"[storage] removed {removed} converted BMP frames "
-                            f"({reclaimed / (1024 * 1024):.1f} MiB reclaimed)"
-                        )
+                # Register the shot before CPU-heavy video conversion. The single
+                # background worker keeps capture responsive without running several
+                # FFmpeg encodes against each other.
+                shot_id = db.insert(pkt, tr, folder, archive_path, None)
+                if ffmpeg and archive_path:
+                    media_executor.submit(
+                        process_shot_media,
+                        db.path,
+                        shot_id,
+                        ffmpeg,
+                        archive_path,
+                        args.video_fps,
+                        not args.no_copy and not args.keep_source_frames,
+                    )
 
                 ball = pkt.payload.get("BallData") or {}
                 total_yd = tr.total_m * M_TO_YD if tr else None
@@ -987,6 +1040,8 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     except KeyboardInterrupt:
         write_heartbeat('stopped')
+        media_executor.shutdown(wait=False, cancel_futures=True)
+        db.close()
         print("\nStopped.")
         return 0
 
