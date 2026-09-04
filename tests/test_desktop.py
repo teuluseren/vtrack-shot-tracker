@@ -29,6 +29,15 @@ class DesktopTests(unittest.TestCase):
     def test_window_title_is_version_free_product_name(self):
         self.assertEqual(vtrack_desktop.APP_TITLE, "vTrack Shot Tracker")
 
+    def test_windows_app_identity_is_registered(self):
+        with mock.patch.object(vtrack_desktop.os, "name", "nt"), mock.patch(
+            "ctypes.windll", create=True
+        ) as windll:
+            vtrack_desktop.set_windows_app_user_model_id()
+        windll.shell32.SetCurrentProcessExplicitAppUserModelID.assert_called_once_with(
+            vtrack_desktop.APP_USER_MODEL_ID
+        )
+
     def test_window_state_round_trip_and_bounds(self):
         with tempfile.TemporaryDirectory() as tempdir:
             root = Path(tempdir)

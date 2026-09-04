@@ -2,6 +2,14 @@
 
 All notable public changes follow [Keep a Changelog](https://keepachangelog.com/) and releases use [Semantic Versioning](https://semver.org/).
 
+## [0.6.2] - 2026-09-04
+
+### Fixed
+
+- Replaced the command-style Start-menu shortcuts with one `vTrack Shot Tracker` app entry.
+- Assigned the installed shortcut and desktop window the same stable Windows app identity.
+- Removed obsolete Start, Review, Update, Stop, and Uninstall shortcuts during upgrade so taskbar pins no longer resolve to the Stop command.
+
 ## [0.6.1] - 2026-09-04
 
 ### Fixed

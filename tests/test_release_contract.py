@@ -60,6 +60,26 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertNotIn("AppVerName={#AppName} {#AppVersion}", installer)
         self.assertEqual(vtrack_shot_tracker.APP_NAME, "vTrack Shot Tracker")
 
+    def test_installer_publishes_one_windows_app_entry(self):
+        root = Path(__file__).resolve().parents[1]
+        installer = (root / "packaging" / "VTrackShotTracker.iss").read_text(
+            encoding="utf-8"
+        )
+        icons = installer.split("[Icons]", 1)[1].split("[Run]", 1)[0]
+        self.assertEqual(icons.count("Name:"), 1)
+        self.assertIn('Name: "{group}\\vTrack Shot Tracker"', icons)
+        self.assertIn('AppUserModelID: "{#AppUserModelID}"', icons)
+        self.assertNotIn("Parameters:", icons)
+        self.assertIn("[InstallDelete]", installer)
+        for obsolete in (
+            "Start vTrack Shot Tracker.lnk",
+            "Shot Review.lnk",
+            "Check for Updates.lnk",
+            "Stop vTrack Shot Tracker.lnk",
+            "Uninstall vTrack Shot Tracker.lnk",
+        ):
+            self.assertIn(obsolete, installer)
+
     def test_version_bump_command_uses_human_release_sizes(self):
         root = Path(__file__).resolve().parents[1]
         script = (root / "Bump-Version.ps1").read_text(encoding="utf-8")
