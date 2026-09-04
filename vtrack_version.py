@@ -4,4 +4,4 @@ This is the single source of truth used by the UI, build script, installer,
 and update checks.
 """
 
-__version__ = "0.5.3"
+__version__ = "0.6.0"
