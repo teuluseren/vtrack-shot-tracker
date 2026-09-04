@@ -13,6 +13,7 @@
 
 #define AppName "vTrack Shot Tracker"
 #define AppExeName "VTrackShotTracker.exe"
+#define AppUserModelID "teuluseren.VTrackShotTracker"
 
 [Setup]
 AppId={{13DB1622-C477-4BDC-95F0-16D00E5AA99B}
@@ -51,12 +52,15 @@ Source: "Stop-VTrackShotTracker.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Start-VTrack.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Stop-VTrack.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
+[InstallDelete]
+Type: files; Name: "{group}\Start vTrack Shot Tracker.lnk"
+Type: files; Name: "{group}\Shot Review.lnk"
+Type: files; Name: "{group}\Check for Updates.lnk"
+Type: files; Name: "{group}\Stop vTrack Shot Tracker.lnk"
+Type: files; Name: "{group}\Uninstall vTrack Shot Tracker.lnk"
+
 [Icons]
-Name: "{group}\Start vTrack Shot Tracker"; Filename: "{app}\{#AppExeName}"; Parameters: "start"
-Name: "{group}\Shot Review"; Filename: "{app}\{#AppExeName}"; Parameters: "review"
-Name: "{group}\Check for Updates"; Filename: "{app}\{#AppExeName}"; Parameters: "update"
-Name: "{group}\Stop vTrack Shot Tracker"; Filename: "{app}\{#AppExeName}"; Parameters: "stop"
-Name: "{group}\Uninstall vTrack Shot Tracker"; Filename: "{uninstallexe}"
+Name: "{group}\vTrack Shot Tracker"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; AppUserModelID: "{#AppUserModelID}"
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Parameters: "start"; Description: "Start vTrack Shot Tracker"; Flags: postinstall nowait skipifsilent unchecked

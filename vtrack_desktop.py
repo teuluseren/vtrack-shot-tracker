@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 
 APP_TITLE = "vTrack Shot Tracker"
+APP_USER_MODEL_ID = "teuluseren.VTrackShotTracker"
 DEFAULT_URL = "http://127.0.0.1:8765/"
 WINDOW_STATE_FILE = "desktop-window.json"
 WEBVIEW_STORAGE_DIR = "webview-profile"
@@ -23,6 +24,20 @@ DEFAULT_WINDOW_STATE = {
     "y": None,
     "maximized": True,
 }
+
+
+def set_windows_app_user_model_id() -> None:
+    """Associate the visible window with the installer's single app shortcut."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            APP_USER_MODEL_ID
+        )
+    except (AttributeError, OSError):
+        pass
 
 
 def load_window_state(runtime_dir: Path) -> dict[str, object]:
@@ -150,6 +165,7 @@ def run_desktop(
 ) -> int:
     if os.name != "nt":
         raise RuntimeError("The VTrack desktop window requires Windows.")
+    set_windows_app_user_model_id()
     runtime_version = webview2_runtime_version()
     if not runtime_version:
         raise RuntimeError(
