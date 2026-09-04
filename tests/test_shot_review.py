@@ -31,6 +31,22 @@ class ShotReviewTests(unittest.TestCase):
     def tearDown(self):
         self.tempdir.cleanup()
 
+    def test_generated_raw_camera_video_paths_are_resolved(self):
+        root = Path(self.tempdir.name)
+        cam1 = root / "cam1_raw.mp4"
+        cam2 = root / "cam2_raw.mp4"
+        cam1.write_bytes(b"video-1")
+        cam2.write_bytes(b"video-2")
+
+        self.assertEqual(
+            ShotStore.resolve_media_path({"cam1_video_path": str(cam1)}, "swing1"),
+            cam1.resolve(),
+        )
+        self.assertEqual(
+            ShotStore.resolve_media_path({"archive_path": str(root)}, "swing2"),
+            cam2.resolve(),
+        )
+
     def test_session_can_be_renamed(self):
         session_id = self.store.create_session("Original")
         self.assertTrue(self.store.rename_session(session_id, "Driver fitting"))
