@@ -157,6 +157,31 @@ It normally contains:
 
 Back up the whole archive directory if you want a complete Shot Tracker backup.
 
+### Media storage cleanup
+
+For new copied shots, Shot Tracker converts each available BMP frame sequence to
+H.264 MP4 and removes that sequence only after the replacement video exists and
+is non-empty. Database records, strike data, and generated videos are preserved.
+Frames are also preserved when video conversion fails or when `--no-copy` is
+used.
+
+Preview recoverable space in an existing archive:
+
+```powershell
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' cleanup-storage
+```
+
+Perform the cleanup:
+
+```powershell
+& 'C:\Program Files\VTrack Shot Tracker\VTrackShotTracker.exe' cleanup-storage --apply
+```
+
+The apply command stops Shot Tracker's own processes before deleting eligible
+frames. To retain source BMPs for future shots, set the
+`VTRACK_KEEP_SOURCE_FRAMES=1` environment variable before starting Shot
+Tracker, or pass `--keep-source-frames` when running the collector directly.
+
 ### Logs
 
 Logs are normally under:
