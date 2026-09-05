@@ -33,7 +33,11 @@ jobs:
           if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
             throw "Tag '$env:GITHUB_REF_NAME' must match source version 'v$version'."
           }
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and $env:GITHUB_REF -ne 'refs/heads/Main') {
+            throw "Manual releases must run from the Main branch, not '$env:GITHUB_REF_NAME'."
+          }
           "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "RELEASE_TAG=v$version" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Run checks
         shell: pwsh
@@ -74,9 +78,11 @@ jobs:
             dist/VTrackShotTracker-${{ env.APP_VERSION }}-SHA256SUMS.txt
 
       - name: Publish GitHub release
-        if: github.ref_type == 'tag'
+        if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
           generate_release_notes: true
           prerelease: ${{ contains(env.APP_VERSION, '-') }}
           files: |
