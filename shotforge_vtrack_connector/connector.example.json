@@ -1,0 +1,14 @@
+{
+  "python": "python.exe",
+  "listen_host": "127.0.0.1",
+  "listen_port": 12485,
+  "shotforge_host": "127.0.0.1",
+  "shotforge_port": 921,
+  "launch_shotforge": true,
+  "shotforge_exe": "",
+  "follow_shotforge_window": true,
+  "shot_mode": "vtrack",
+  "reply_mode": "gspro",
+  "reply_delimiter": "nul",
+  "connect_timeout": 5.0
+}

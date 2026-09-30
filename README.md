@@ -217,10 +217,14 @@ docs/                        user, advanced, architecture, and agent documentati
 packaging/                   Windows build and installer files
 tests/                       automated tests
 tools/                       development/archive utilities
+shotforge_vtrack_connector/   standalone experimental ShotForge launcher/bridge
 .github/workflows/           CI and release automation
 ```
 
 ## License
+
+For the separate VTrack-to-ShotForge integration, see the
+[ShotForge VTrack Connector guide](shotforge_vtrack_connector/README.md).
 
 vTrack Shot Tracker is **source-available** under the **PolyForm Shield License 1.0.0**. It is not MIT-licensed and should not be described as OSI open source. See [`LICENSE`](LICENSE) for the project notice and the official PolyForm Shield terms.
 
