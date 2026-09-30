@@ -1,0 +1,40 @@
+ShotForge VTrack Connector - Windows x64 beta
+
+1. Extract the entire ZIP into a writable folder, such as
+   C:\Golf\ShotForgeVTrackConnector. Do not run it from inside the ZIP.
+   Keep the python folder and all other files together.
+
+2. Install ShotForge and enable its Open Connect listener on port 921.
+   Python installation and vTrack Shot Tracker are not required.
+
+3. In VTrackToolKit's GSPro simulator settings, select GSPLauncher.exe
+   from the extracted folder. Launch the simulator from VTrackToolKit.
+   ShotForge opens automatically if needed. The short-lived launcher
+   hands off to the GSPro connector status window behind VTrack.
+
+4. Wait until VTrack and ShotForge both show connected. Hit a shot and
+   confirm it appears in ShotForge. A forwarded counter is not proof
+   that the simulator accepted a shot.
+
+5. For face-impact playback, enable VTrack's impact/shot-replay overlay
+   separately from Swing Replay. The impact popup follows ShotForge's
+   window, including Course Play. Use windowed or borderless fullscreen.
+
+Closing VTrack or the connector closes ShotForge only if this connector
+opened it. A ShotForge instance that was already open stays open.
+
+For a different ShotForge installation path, edit connector.json:
+  "shotforge_exe": "D:\\Golf Apps\\ShotForge\\ShotForge.exe"
+
+Stop VTrack and the connector before upgrading. Extract updates to a new
+folder, transfer only your chosen configuration settings, and select the
+new GSPLauncher.exe in VTrack. Keep "python": "python\\python.exe".
+
+Diagnostics (run PowerShell from this extracted folder):
+  powershell -ExecutionPolicy Bypass -File .\Diagnose-Connector.ps1 -Bundle .
+
+Documentation:
+  https://github.com/teuluseren/vtrack-shot-tracker/tree/connector-v0.1.0-beta.1/shotforge_vtrack_connector
+
+This is experimental community software, not an official LAON, GSPro,
+or ShotForge product. See README.md, RELEASE_NOTES.md, and LICENSE.

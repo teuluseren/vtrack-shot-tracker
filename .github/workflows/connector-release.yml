@@ -1,0 +1,53 @@
+name: ShotForge connector beta release
+
+on:
+  push:
+    tags:
+      - 'connector-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Validate connector version
+        shell: pwsh
+        run: |
+          $version = (Get-Content shotforge_vtrack_connector/version.txt -Raw).Trim()
+          if ($version -notmatch '^\d+\.\d+\.\d+-beta\.\d+$') { throw 'Expected a connector beta version.' }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "connector-v$version") { throw 'Connector tag does not match version.txt.' }
+          "CONNECTOR_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Package standalone connector
+        shell: pwsh
+        run: .\shotforge_vtrack_connector\Package-Connector.ps1
+      - name: Test packaged connector and protocol
+        shell: pwsh
+        run: |
+          $env:SHOTFORGE_CONNECTOR_TEST_BUNDLE = (Get-Content dist/connector-test-bundle.txt -Raw).Trim()
+          python -m unittest discover -s tests -p 'test_shotforge_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Connector tests failed.' }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ShotForgeVTrackConnector-${{ env.CONNECTOR_VERSION }}-windows-x64
+          path: |
+            dist/ShotForgeVTrackConnector-*.zip
+            dist/ShotForgeVTrackConnector-*-SHA256SUMS.txt
+      - name: Publish connector prerelease
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v3
+        with:
+          name: ShotForge VTrack Connector ${{ env.CONNECTOR_VERSION }}
+          body_path: shotforge_vtrack_connector/RELEASE_NOTES.md
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
+          files: |
+            dist/ShotForgeVTrackConnector-*.zip
+            dist/ShotForgeVTrackConnector-*-SHA256SUMS.txt
